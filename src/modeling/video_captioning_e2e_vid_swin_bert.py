@@ -34,7 +34,9 @@ class VideoTransformer(torch.nn.Module):
         B, S, C, H, W = images.shape  # batch, segment, chanel, hight, width
         # (B x S x C x H x W) --> (B x C x S x H x W)
         images = images.permute(0, 2, 1, 3, 4)
-        vid_feats = self.swin(images)
+        from torch.cuda.amp import autocast
+        with autocast():
+            vid_feats = self.swin(images)
         if self.use_grid_feat==True:
             vid_feats = vid_feats.permute(0, 2, 3, 4, 1)
         vid_feats = vid_feats.view(B, -1, self.latent_feat_size)

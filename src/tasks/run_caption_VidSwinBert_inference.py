@@ -1,4 +1,5 @@
 from __future__ import absolute_import, division, print_function
+import cv2
 import os
 import sys
 pythonpath = os.path.abspath(
@@ -13,7 +14,7 @@ import time
 import torch
 import torch.distributed as dist
 from apex import amp
-import deepspeed
+# import deepspeed
 from src.configs.config import (basic_check_arguments, shared_configs)
 from src.datasets.data_utils.video_ops import extract_frames_from_video_path
 from src.datasets.data_utils.video_transforms import Compose, Resize, Normalize, CenterCrop
@@ -60,7 +61,7 @@ def _transforms(args, frames):
     crop_frames = crop_frames.permute(1, 0, 2, 3)
     return crop_frames 
 
-def inference(args, video_path, model, tokenizer, tensorizer):
+def inference(args, video_path, model, tokenizer, tensorizer) -> str:
     cls_token_id, sep_token_id, pad_token_id, mask_token_id, period_token_id = \
         tokenizer.convert_tokens_to_ids([tokenizer.cls_token, tokenizer.sep_token,
         tokenizer.pad_token, tokenizer.mask_token, '.'])
@@ -109,6 +110,7 @@ def inference(args, video_path, model, tokenizer, tensorizer):
                 logger.info(f"Conf: {conf.item()}")
 
     logger.info(f"Inference model computing time: {time_meter} seconds")
+    return cap
 
 def check_arguments(args):
     # shared basic checks
@@ -180,7 +182,7 @@ def get_custom_args(base_config):
     args = base_config.parse_args()
     return args
 
-def main(args):
+def main(args) -> (str, str):
     args = update_existing_config_for_inference(args)
     # global training_saver
     args.device = torch.device(args.device)
@@ -223,9 +225,47 @@ def main(args):
     vl_transformer.eval()
 
     tensorizer = build_tensorizer(args, tokenizer, is_train=False)
-    inference(args, args.test_video_fname, vl_transformer, tokenizer, tensorizer)
+    return inference(args, args.test_video_fname, vl_transformer, tokenizer, tensorizer), args.test_video_fname
 
 if __name__ == "__main__":
     shared_configs.shared_video_captioning_config(cbs=True, scst=True)
     args = get_custom_args(shared_configs)
-    main(args)
+    videoText, filename = main(args)
+
+    print(filename)
+    cap = cv2.VideoCapture(filename[2:])
+
+    theframes = []
+    try:
+        while True:
+            try:
+                isTrue, frame = cap.read()
+            except:
+                break
+            frm_width = 1280
+            frm_height = 720
+            frame = cv2.resize(frame, (frm_width, frm_height), interpolation=cv2.INTER_CUBIC)
+            cv2.rectangle(frame, (0, frm_height-50), (frm_width, frm_height-25), (0, 0, 0), thickness=25)
+            cv2.putText(frame, videoText, ((frm_width//2)-int(len(videoText)*6), frm_height-35), cv2.FONT_HERSHEY_DUPLEX,
+                        0.7, (255, 255, 255), thickness=2)
+            cv2.imshow('Video', frame)
+            theframes.append(frame)
+            cv2.setWindowProperty('Video', cv2.WND_PROP_TOPMOST, 1)
+            if cv2.getWindowProperty('Video', 0) < 0:
+                break
+
+            if cv2.waitKey(20) & 0xFF == ord('d'):
+                break
+    except:
+        print("End Reached")
+    finally:
+        print("Saving video...")
+        out = cv2.VideoWriter('output/thevideo.mp4',
+                              cv2.VideoWriter_fourcc(*'mp4v'), cap.get(5), (frm_width, frm_height),
+                              True)
+        for theframe in theframes:
+            out.write(theframe)
+        out.release()
+
+    cv2.waitKey()
+    cv2.destroyAllWindows()

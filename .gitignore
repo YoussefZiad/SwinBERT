@@ -77,3 +77,10 @@ linjli
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Youssef's Ignored files
+./docs/
+./models/
+./output/
+
+

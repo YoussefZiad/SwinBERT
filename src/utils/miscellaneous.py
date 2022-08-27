@@ -40,9 +40,9 @@ def get_user_name():
 
 def acquireLock(lock_f='/tmp/lockfile.LOCK'):
     ''' acquire exclusive lock file access '''
-    import fcntl
+    import portalocker
     locked_file_descriptor = open(lock_f, 'w+')
-    fcntl.lockf(locked_file_descriptor, fcntl.LOCK_EX)
+    portalocker.lock(locked_file_descriptor, portalocker.LOCK_EX)
     return locked_file_descriptor
 
 

@@ -45,8 +45,8 @@ try:
     from urllib.request import HTTPError
 except ImportError:
     # py2
-    from urllib2 import urlopen, Request
-    from urllib2 import HTTPError
+    from urllib import urlopen, Request
+    from urllib import HTTPError
 import copy
 from deprecated import deprecated
 import io
@@ -3213,9 +3213,9 @@ def softnms(rects, th=0.5):
 
 def acquireLock(lock_f='/tmp/lockfile.LOCK'):
     ''' acquire exclusive lock file access '''
-    import fcntl
+    import portalocker
     locked_file_descriptor = open(lock_f, 'w+')
-    fcntl.lockf(locked_file_descriptor, fcntl.LOCK_EX)
+    portalocker.lock(locked_file_descriptor, portalocker.LOCK_EX)
     return locked_file_descriptor
 
 def releaseLock(locked_file_descriptor):

@@ -2,6 +2,12 @@ from __future__ import absolute_import, division, print_function
 
 import os
 import sys
+
+#neu
+import matplotlib.pyplot as plt
+
+from apex.amp import scaler
+
 pythonpath = os.path.abspath(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 print(pythonpath)
@@ -13,7 +19,7 @@ import datetime
 import torch
 import torch.distributed as dist
 import gc
-import deepspeed
+# import deepspeed
 from apex import amp
 from apex.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
@@ -92,11 +98,11 @@ def mixed_precision_init(args, model):
     
     if args.mixed_precision_method == "deepspeed":
         config = get_deepspeed_config(args)
-        model, optimizer, _, _ = deepspeed.initialize(
-            config_params=config,
-            model=model,
-            optimizer=optimizer,
-            lr_scheduler=scheduler)
+        # model, optimizer, _, _ = deepspeed.initialize(
+        #     config_params=config,
+        #     model=model,
+        #     optimizer=optimizer,
+        #     lr_scheduler=scheduler)
     elif args.mixed_precision_method == "fairscale":
         from fairscale.optim.grad_scaler import ShardedGradScaler
         scaler = ShardedGradScaler()
@@ -122,6 +128,9 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
     max_global_step = args.max_global_step
     global_iters_per_epoch = args.global_iters_per_epoch
 
+    #neu
+    loss_arr = []
+
     eval_log = []
     best_score = 0
     start_training_time = time.time()
@@ -142,6 +151,7 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
 
     training_saver.save_args(args)
     training_saver.save_tokenizer(tokenizer)
+
 
     for iteration, (img_keys, batch, meta_data) in enumerate(train_dataloader):
         iteration += 1
@@ -178,6 +188,9 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
         batch_score = compute_score_with_logits(logits, masked_ids)
         batch_acc = torch.sum(batch_score.float()) / torch.sum(inputs['masked_pos'])
 
+        #neu
+        loss_arr.append(loss)
+
         if args.learn_mask_enabled:
             loss_dict = {'loss': loss, 'loss_sparsity': loss_sparsity.item(), 'acc': batch_acc}
         else:
@@ -185,7 +198,7 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
         meters.update(**loss_dict)
         running_loss(loss.item())
         running_batch_acc(batch_acc.item())
-        
+
         # backward pass
         backward_now = iteration % args.gradient_accumulation_steps == 0
         if args.mixed_precision_method == "deepspeed":
@@ -207,7 +220,7 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
                 "train/lr_lm", lr_LM, global_step)
             TB_LOGGER.add_scalar(
                 "train/ls_visBone", lr_VisBone, global_step)
-            
+
             if args.max_grad_norm != -1:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     amp.master_params(optimizer), args.max_grad_norm)
@@ -227,7 +240,7 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
             restorer.step()
 
         batch_time = time.time() - end
-        
+
         if backward_now:
             if global_step % args.logging_steps == 0 or global_step == max_global_step:
                 if 'time_info' in meters.meters:
@@ -263,15 +276,16 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
 
             if (args.save_steps > 0 and global_step % args.save_steps == 0) or global_step == max_global_step or global_step == 1:
                 epoch = global_step // global_iters_per_epoch
-                
+
                 checkpoint_dir = op.join(args.output_dir, 'checkpoint-{}-{}'.format(
                     epoch, global_step))
                 if get_world_size() > 1:
                     dist.barrier()
-                training_saver.save_model(
-                    checkpoint_dir, global_step, model, optimizer)
+                if epoch == args.num_train_epochs:
+                    training_saver.save_model(
+                        checkpoint_dir, global_step, model, optimizer)
                 if get_world_size() > 1:
-                    dist.barrier()    
+                    dist.barrier()
                 if args.evaluate_during_training:
                     logger.info(f"Perform evaluation at iteration {iteration}, global_step {global_step}")
                     evaluate_file = evaluate(args, val_dataloader, model, tokenizer, checkpoint_dir)
@@ -283,7 +297,7 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
                         val_log = {f'valid/{k}': v for k,v in res.items()}
                         TB_LOGGER.log_scalar_dict(val_log)
                         aml_run.log(name='CIDEr', value=float(res['CIDEr']))
-                        
+
                         best_score = max(best_score, res['CIDEr'])
                         res['epoch'] = epoch
                         res['iteration'] = iteration
@@ -292,7 +306,7 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
                         with open(op.join(args.output_dir, args.val_yaml.replace('/','_')+'eval_logs.json'), 'w') as f:
                             json.dump(eval_log, f)
                     if get_world_size() > 1:
-                        dist.barrier()                
+                        dist.barrier()
 
         if iteration > 2:
             meters.update(
@@ -308,7 +322,8 @@ def train(args, train_dataloader, val_dataloader, model, tokenizer, training_sav
     total_training_time = time.time() - start_training_time
     total_time_str = str(datetime.timedelta(seconds=total_training_time))
     logger.info(f'Total training time: {total_time_str} ({(total_training_time / max_iter):.4f} s / iter)')
-    return checkpoint_dir
+    #neu
+    return checkpoint_dir, loss_arr
 
 def get_predict_file(output_dir, args, data_yaml_file):
     cc = ['pred']
@@ -663,7 +678,6 @@ def main(args):
         args.save_steps = args.global_iters_per_epoch
 
         args, vl_transformer, optimizer, scheduler = mixed_precision_init(args, vl_transformer)
-        train(args, train_dataloader, val_dataloader, vl_transformer, tokenizer, training_saver, optimizer, scheduler)
 
     elif args.do_eval:
         val_dataloader = make_data_loader(args, args.val_yaml, tokenizer, args.distributed, is_train=False)

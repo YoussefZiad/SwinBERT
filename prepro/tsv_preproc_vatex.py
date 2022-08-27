@@ -1,5 +1,11 @@
 import os
 import sys
+import inspect
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0, parentdir)
+from src.utils.tsv_file_ops import tsv_writer
+from src.utils.tsv_file_ops import generate_linelist_file
 pythonpath = os.path.abspath(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 print(pythonpath)
@@ -8,12 +14,11 @@ import os.path as op
 import json, yaml, code, io
 import numpy as np
 import pandas as pd
-from src.utils.tsv_file_ops import tsv_writer
-from src.utils.tsv_file_ops import generate_linelist_file
+
 from collections import defaultdict
 
 # data path to raw video files
-data_vid_id = 'datasets/VATEX/raw_videos/{}/{}.mp4'
+data_vid_id = 'drive/MyDrive/SwinBERT/datasets/VATEX/raw_videos/{}/{}.mp4'
 
 # dataset_path: path to dataset
 dataset_path = './datasets/VATEX/'

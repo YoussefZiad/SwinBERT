@@ -9,11 +9,13 @@ import subprocess
 import tempfile
 import time
 from typing import Dict, Optional
-
-from .coco_caption.pycocotools.coco import COCO
-from .coco_caption.pycocoevalcap.eval import COCOEvalCap
-from .cider.pyciderevalcap.ciderD.ciderD import CiderD
-from .coco_caption.pycocoevalcap.meteor.meteor import Meteor
+import os
+import inspect
+import sys
+from pycocotools.coco import COCO
+from pycocoevalcap.eval import COCOEvalCap
+from cider.pyciderevalcap.ciderD.ciderD import CiderD
+from pycocoevalcap.meteor.meteor import Meteor
 
 def evaluate_on_nocaps(split, predict_file, evaluate_file=None):
     '''
@@ -87,7 +89,7 @@ def evaluate_on_coco_caption(res_file, label_file, outfile=None):
 
     coco = COCO(label_file_coco)
     cocoRes = coco.loadRes(res_file_coco)
-    cocoEval = COCOEvalCap(coco, cocoRes, 'corpus')
+    cocoEval = COCOEvalCap(coco, cocoRes)
 
     # evaluate on a subset of images by setting
     # cocoEval.params['image_id'] = cocoRes.getImgIds()
